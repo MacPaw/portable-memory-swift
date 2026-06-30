@@ -157,6 +157,21 @@ final class PortableMemoryTests: XCTestCase {
         XCTAssertEqual(lines, foreign, "unknown kind preserved verbatim, incl. surrounding whitespace")
     }
 
+    func testReExportClearsStaleFiles() async throws {
+        let a = InMemoryStore()
+        await a.seedEpisode(ep("ep_s", "s"))
+        let dir = tmpDir("stale"); addTeardownBlock { try? FileManager.default.removeItem(at: dir) }
+        _ = try await BundleExporter().export(a, to: dir)
+        // Plant a stale item file as if left by a prior, larger export.
+        let stale = dir.appendingPathComponent("items/episode_OLD.jsonl")
+        try Data("{}\n".utf8).write(to: stale)
+        // Re-export to the same directory — the stale file must be gone and the bundle
+        // must validate clean (no "present but not listed").
+        _ = try await BundleExporter().export(a, to: dir)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: stale.path), "stale file cleared on re-export")
+        XCTAssertTrue(BundleValidator().validate(bundle: dir).ok, "re-exported bundle is valid")
+    }
+
     func testRejectsManifestPathTraversal() async throws {
         let a = InMemoryStore()
         await a.seedEpisode(ep("ep_p", "p"))

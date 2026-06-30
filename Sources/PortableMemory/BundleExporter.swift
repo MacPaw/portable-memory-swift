@@ -11,6 +11,11 @@ public struct BundleExporter: Sendable {
                        mode: ExportMode = .full, since: Date? = nil,
                        level: ConformanceLevel = .L2) async throws -> MemManifest {
         let fm = FileManager.default
+        // Clear any prior bundle contents first, so stale items/audit/embeddings files
+        // can't linger and later fail "present but not listed" verification (or be
+        // re-ingested). Only known bundle subpaths are removed — unrelated files the
+        // caller may keep in the directory are left alone.
+        Self.clearBundle(at: dir)
         try fm.createDirectory(at: dir, withIntermediateDirectories: true)
         try fm.createDirectory(at: dir.appendingPathComponent("items"), withIntermediateDirectories: true)
         try fm.createDirectory(at: dir.appendingPathComponent("audit"), withIntermediateDirectories: true)
@@ -97,6 +102,7 @@ public struct BundleExporter: Sendable {
     public func exportEvidencePack(_ store: PortableMemoryStore, to dir: URL,
                                    since: Date? = nil) async throws -> MemManifest {
         let fm = FileManager.default
+        Self.clearBundle(at: dir)
         try fm.createDirectory(at: dir.appendingPathComponent("audit"), withIntermediateDirectories: true)
         try fm.createDirectory(at: dir.appendingPathComponent("provenance"), withIntermediateDirectories: true)
         let info = try await store.storeInfo()
@@ -115,6 +121,16 @@ public struct BundleExporter: Sendable {
     }
 
     // MARK: - Internals
+
+    /// Remove a prior bundle's known subpaths (`items/`, `audit/`, `embeddings/`,
+    /// `provenance/`, `manifest.json`, `CHECKSUMS`) so a re-export to the same directory
+    /// never leaves stale, unlisted files behind. Unrelated files are left alone.
+    static func clearBundle(at dir: URL) {
+        let fm = FileManager.default
+        for sub in ["items", "audit", "embeddings", "provenance", "manifest.json", "CHECKSUMS"] {
+            try? fm.removeItem(at: dir.appendingPathComponent(sub))
+        }
+    }
 
     private func makeManifest(info: StoreInfo, level: ConformanceLevel, mode: ExportMode,
                               since: Date?, counts: [String: Int], files: [MemFileEntry],
