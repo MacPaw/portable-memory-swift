@@ -128,6 +128,44 @@ Dependency-light (only [swift-crypto](https://github.com/apple/swift-crypto)), s
 
 **Status:** spec v1.0; this is the reference SDK. [Mnemos](https://github.com/MacPaw/mnemos) is the reference adopter. Anyone — any vendor, any language — is welcome to implement the spec and the JSON Schemas; the goal is for the standard to grow *outward* across the ecosystem.
 
+## FAQ
+
+**Is my memory encrypted inside a `.mem` bundle?**
+The bundle is plain JSONL *by design* — inspectable and vendor-neutral. Encryption is an envelope concern: encrypt the bundle at rest or in transit with whatever you already use (e.g. age, GPG, an encrypted archive). The format never weakens that; it just doesn't reinvent it.
+
+**What about secrets / API keys / credentials?**
+They are **never** exported as plaintext *or* ciphertext. A `secretRef` carries only the metadata skeleton (label, category, sensitivity, encryption metadata); the encrypted value stays in the originating vault unless an explicit, authorized, encrypted transfer is negotiated.
+
+**What happens to embeddings across different models?**
+Source text is the portable truth; embeddings are an optional, model-tagged accelerator. A receiver reuses vectors only if its model tag matches exactly — otherwise it re-embeds from text. The reference SDK doesn't inline vectors at all, so **a bundle is never tied to one embedding model.**
+
+**Do I have to support every record kind?**
+No. Every method on `PortableMemoryStore` has a default (empty read / no-op write), so you implement only the kinds you actually have — a store with just episodes overrides two methods.
+
+**What if a bundle has fields or kinds my engine doesn't understand?**
+They survive untouched. Unknown fields on an episode are preserved in `ext`; entire unknown record kinds round-trip **verbatim**. Importing another vendor's bundle and re-exporting drops nothing — that's what "lossless superset" means.
+
+**How are merges and conflicts handled?**
+Import is **merge-by-id and idempotent** — re-importing the same bundle is a no-op. Bi-temporal facts and edges **supersede rather than overwrite** (both rows kept, validity windows set), so history is preserved and a point-in-time (`as_of`) view reconstructs any past state.
+
+**How do I claim a conformance level?**
+Run the [`Conformance/`](Conformance) checklist. **L0**: the validator passes on your export. **L1**: export → import reproduces the store and a second import is a no-op. **L2** (the badge): pass the deletion-propagation probe — a deleted item is unreachable via every route *and* a tombstone was written. **L3**: full audit trail + Evidence Pack + signed tombstones.
+
+**Why is *deletion* the conformance gate, of all things?**
+Because it's the hardest guarantee and the one people actually test. A memory layer that can't prove a delete is gone *everywhere* — vector index, cache, graph, replica — is a liability the moment a user checks. Gating the badge on it makes the badge mean something.
+
+**Is this Swift-only / Apple-only?**
+No. The format and protocol are language-neutral (see [`Spec/`](Spec) + [`Schemas/`](Schemas) — validate in any language). This repo is the Swift reference SDK, and it builds on Linux as well as Apple platforms.
+
+**Does adopting it require a server or a specific database?**
+No. A bundle is just files, and the SDK has no storage opinion — you map your existing store through the protocol. It's local-first; sync/replica is opt-in.
+
+**How does this relate to MCP (Model Context Protocol)?**
+They're complementary. MCP is a *runtime* protocol for connecting models to tools; Portable Memory is a *data* format for the memory itself. An MCP-based assistant can export/import its memory as a `.mem` bundle.
+
+**Is the format stable and versioned?**
+`format` is semver in the manifest and `capabilities[]` declares optional features. Readers preserve unknown fields and kinds, so a newer bundle never loses data in an older reader.
+
 ## License
 
 MIT — use it, build on it, ship it.
