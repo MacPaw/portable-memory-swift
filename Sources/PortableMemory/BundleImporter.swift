@@ -79,10 +79,11 @@ public struct BundleImporter: Sendable {
         for p in try readJSONL(dir, "items/procedure.jsonl", PortableProcedure.self) { try await store.importProcedure(p); bump(.procedure) }
         for c in try readJSONL(dir, "items/community.jsonl", PortableCommunity.self) { try await store.importCommunity(c); bump(.community) }
         let refs = try readJSONL(dir, "items/secretRef.jsonl", PortableSecretRef.self)
+        for r in refs { try await store.importSecretRef(r); bump(.secretRef) }
         if !refs.isEmpty {
             report.warnings.append(
-                "\(refs.count) secret reference(s) not restored: vault values must be transferred " +
-                "via an authorized encrypted channel (spec §7).")
+                "\(refs.count) secret reference(s): metadata skeleton restored, but the encrypted " +
+                "VALUE is not in the bundle — transfer it via an authorized encrypted channel (spec §7).")
         }
 
         // 4. Unknown-kind passthrough — store foreign kinds verbatim (§10). Already
@@ -110,6 +111,10 @@ public struct BundleImporter: Sendable {
     private func verifyChecksums(dir: URL, manifest: MemManifest) throws {
         let listed = Set(manifest.files.map { $0.path })
         for f in manifest.files {
+            // A crafted manifest must not be able to escape the bundle directory.
+            guard BundlePath.isSafe(f.path) else {
+                throw MemImportError.checksumMismatch("\(f.path) (path escapes the bundle)")
+            }
             guard let data = try? Data(contentsOf: dir.appendingPathComponent(f.path)) else {
                 throw MemImportError.checksumMismatch("\(f.path) (missing)")
             }
@@ -142,12 +147,14 @@ public struct BundleImporter: Sendable {
         return out
     }
 
+    /// Verbatim line content for unknown-kind passthrough — does NOT trim, so each
+    /// record's bytes survive a round-trip unchanged (only the `\n` framing, inherent to
+    /// JSONL, is normalized; empty lines carry no record and are dropped).
     private func rawLines(_ url: URL) -> [String] {
         guard let data = try? Data(contentsOf: url) else { return [] }
         return String(decoding: data, as: UTF8.self)
             .split(separator: "\n", omittingEmptySubsequences: true)
-            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-            .filter { !$0.isEmpty }
+            .map(String.init)
     }
 
     private func readJSONL<T: Decodable>(_ dir: URL, _ relPath: String, _ type: T.Type) throws -> [T] {

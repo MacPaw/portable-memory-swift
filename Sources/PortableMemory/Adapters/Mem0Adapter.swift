@@ -23,10 +23,20 @@ public enum Mem0Adapter {
         } else {
             items = []
         }
-        return items.compactMap(mapOne)
+        // Build the ISO-8601 parsers ONCE per call, not per record — a hot path for
+        // large exports (ISO8601DateFormatter is expensive to allocate/configure).
+        let isoFractional = ISO8601DateFormatter()
+        isoFractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        let isoPlain = ISO8601DateFormatter()
+        isoPlain.formatOptions = [.withInternetDateTime]
+        let parse: (String?) -> Date? = { s in
+            guard let s else { return nil }
+            return isoFractional.date(from: s) ?? isoPlain.date(from: s)
+        }
+        return items.compactMap { mapOne($0, parse: parse) }
     }
 
-    static func mapOne(_ o: [String: Any]) -> PortableEpisode? {
+    static func mapOne(_ o: [String: Any], parse: (String?) -> Date?) -> PortableEpisode? {
         let text = (o["memory"] as? String) ?? (o["text"] as? String) ?? (o["data"] as? String) ?? ""
         guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
 
@@ -35,8 +45,8 @@ public enum Mem0Adapter {
         let agentId = o["agent_id"] as? String
         let actorId = o["actor_id"] as? String
         let runId = o["run_id"] as? String
-        let created = (o["created_at"] as? String).flatMap(parseISO) ?? Date()
-        let updated = (o["updated_at"] as? String).flatMap(parseISO)
+        let created = parse(o["created_at"] as? String) ?? Date()
+        let updated = parse(o["updated_at"] as? String)
 
         var actors: [String] = []
         for a in [userId, agentId, actorId] where (a?.isEmpty == false) { actors.append(a!) }
@@ -72,13 +82,5 @@ public enum Mem0Adapter {
             return String(decoding: data, as: UTF8.self)
         }
         return String(describing: v)
-    }
-
-    static func parseISO(_ s: String) -> Date? {
-        let f = ISO8601DateFormatter()
-        f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        if let d = f.date(from: s) { return d }
-        f.formatOptions = [.withInternetDateTime]
-        return f.date(from: s)
     }
 }

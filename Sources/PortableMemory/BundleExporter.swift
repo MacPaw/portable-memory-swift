@@ -19,7 +19,11 @@ public struct BundleExporter: Sendable {
         var files: [MemFileEntry] = []
         var counts: [String: Int] = [:]
         let incremental = (mode == .incremental)
-        func keep(_ ts: Date) -> Bool { !incremental || since == nil || ts >= since! }
+        // A cursor only applies to an incremental export. Ignore a stray `since` on a
+        // full export so it can never silently omit older tombstones/audit rows or write
+        // a `since` into a full manifest (which would contradict the schema).
+        let cutoff = incremental ? since : nil
+        func keep(_ ts: Date) -> Bool { !incremental || cutoff == nil || ts >= cutoff! }
 
         // ── Bulky, append-mostly kinds: --since delta-filtered. Episodes merge `ext`. ──
         let extMap = try await store.exportEpisodeExt()
@@ -70,18 +74,18 @@ public struct BundleExporter: Sendable {
         }
 
         // ── audit/tombstones.jsonl — applied FIRST on import (§5). ──
-        let tombstones = try await store.exportTombstones(since: since)
+        let tombstones = try await store.exportTombstones(since: cutoff)
         counts["tombstone"] = try writeJSONL(tombstones, "audit/tombstones.jsonl", dir, &files)
 
         // ── audit/log.jsonl — the portable mutation trail (L1+). ──
         if level != .L0 {
-            let audit = try await store.exportAuditLog(since: since)
+            let audit = try await store.exportAuditLog(since: cutoff)
             counts["audit"] = try writeJSONL(audit, "audit/log.jsonl", dir, &files)
         }
 
         try writeChecksums(files, in: dir)
         let manifest = makeManifest(
-            info: info, level: level, mode: mode, since: since,
+            info: info, level: level, mode: mode, since: cutoff,
             counts: counts, files: files,
             capabilities: ["bitemporal", "tombstones", "redaction", "evidence-pack", "ext", "passthrough"])
         try MemCodec.encoder.encode(manifest).write(to: dir.appendingPathComponent("manifest.json"))

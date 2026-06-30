@@ -28,6 +28,9 @@ public struct BundleValidator: Sendable {
 
         let listed = Set(manifest.files.map { $0.path })
         for f in manifest.files {
+            guard BundlePath.isSafe(f.path) else {
+                issues.append("path escapes the bundle: \(f.path)"); continue
+            }
             guard let data = try? Data(contentsOf: dir.appendingPathComponent(f.path)) else {
                 issues.append("listed file missing: \(f.path)"); continue
             }

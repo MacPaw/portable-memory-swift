@@ -8,6 +8,11 @@ import Foundation
 //   • unknown FIELDS on an episode — captured into `ext` and re-merged on export;
 //   • unknown KINDS (`items/<vendorKind>.jsonl`) — stored raw and re-emitted byte-for-byte.
 
+// `ext` handling uses `JSONSerialization` (not `MemCodec`'s `JSONEncoder`) because ext
+// values are arbitrary, schema-less JSON. This stays consistent with the canonical
+// codec: `.sortedKeys` fixes key order (deterministic), and `JSONSerialization` does
+// not escape forward slashes — matching `JSONEncoder`'s `.withoutEscapingSlashes`. So
+// ext re-emission is as deterministic as the rest of the bundle.
 public enum Interop {
     /// The native JSON keys on a `PortableEpisode`. Any key found on an imported
     /// episode line that is NOT in this set is a foreign field → `ext`.

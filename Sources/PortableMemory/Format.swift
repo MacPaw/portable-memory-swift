@@ -109,6 +109,23 @@ public struct MemManifest: Codable, Sendable {
     }
 }
 
+// MARK: - Bundle path safety
+
+/// A `.mem` is untrusted input: a crafted `manifest.json` could list a `path` with an
+/// absolute root or `..` segments to make a reader hash/ingest files OUTSIDE the bundle
+/// directory. Every manifest-declared path must be validated bundle-relative before it
+/// is resolved against the bundle root.
+public enum BundlePath {
+    public static func isSafe(_ relativePath: String) -> Bool {
+        guard !relativePath.isEmpty, !relativePath.hasPrefix("/"), !relativePath.hasPrefix("~") else { return false }
+        // Reject Windows-style roots / drive letters and backslash separators too.
+        if relativePath.contains("\\") || relativePath.contains(":") { return false }
+        let components = relativePath.split(separator: "/", omittingEmptySubsequences: true)
+        for c in components where c == ".." || c == "." { return false }
+        return true
+    }
+}
+
 // MARK: - Deterministic canonical codec
 
 /// The single JSON configuration used for every portable record, so serialization is

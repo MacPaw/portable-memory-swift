@@ -143,16 +143,39 @@ final class PortableMemoryTests: XCTestCase {
     func testUnknownKindRoundTripsVerbatim() async throws {
         let a = InMemoryStore()
         await a.seedEpisode(ep("ep_k", "x"))
-        let foreign = #"{"id":"vt_1","blob":"opaque"}"#
-        await a.seedPassthrough("vendorThing", [foreign])
+        // Include a whitespace-padded line to prove passthrough preserves content
+        // verbatim (no trimming).
+        let foreign = [#"{"id":"vt_1","blob":"opaque"}"#, #"   {"id":"vt_2","pad":true}   "#]
+        await a.seedPassthrough("vendorThing", foreign)
         let dir = tmpDir("uk"); addTeardownBlock { try? FileManager.default.removeItem(at: dir) }
         let m = try await BundleExporter().export(a, to: dir)
-        XCTAssertEqual(m.counts["vendorThing"], 1)
+        XCTAssertEqual(m.counts["vendorThing"], 2)
 
         let c = InMemoryStore()
         _ = try await BundleImporter().importBundle(c, from: dir)
         let lines = await c.passthroughFor("vendorThing")
-        XCTAssertEqual(lines, [foreign], "unknown kind preserved verbatim")
+        XCTAssertEqual(lines, foreign, "unknown kind preserved verbatim, incl. surrounding whitespace")
+    }
+
+    func testRejectsManifestPathTraversal() async throws {
+        let a = InMemoryStore()
+        await a.seedEpisode(ep("ep_p", "p"))
+        let dir = tmpDir("trav"); addTeardownBlock { try? FileManager.default.removeItem(at: dir) }
+        _ = try await BundleExporter().export(a, to: dir)
+
+        // Tamper the manifest to declare a file path that escapes the bundle directory.
+        let manifestURL = dir.appendingPathComponent("manifest.json")
+        var m = try MemCodec.decoder.decode(MemManifest.self, from: Data(contentsOf: manifestURL))
+        m.files.append(MemFileEntry(path: "../../../../etc/passwd",
+                                    sha256: String(repeating: "0", count: 64), bytes: 0))
+        try MemCodec.encoder.encode(m).write(to: manifestURL)
+
+        XCTAssertFalse(BundleValidator().validate(bundle: dir).ok, "validator flags the escaping path")
+        let c = InMemoryStore()
+        do {
+            _ = try await BundleImporter().importBundle(c, from: dir)
+            XCTFail("import must refuse a manifest whose path escapes the bundle")
+        } catch { /* expected */ }
     }
 
     func testValidatorDetectsTamper() async throws {

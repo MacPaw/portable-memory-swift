@@ -65,6 +65,11 @@ public protocol PortableMemoryStore: Sendable {
     func importCommunity(_ c: PortableCommunity) async throws
     func importCategory(_ c: PortableCategory) async throws
     func importPreference(_ p: PortablePreference) async throws
+    /// Restore a secret REFERENCE's metadata skeleton (label, sensitivity, category,
+    /// preview, encryption metadata) — NEVER the value/ciphertext, which is not in the
+    /// bundle (spec §7). Default no-op: a store that can't represent a dangling ref
+    /// simply skips it (the importer still reports it).
+    func importSecretRef(_ r: PortableSecretRef) async throws
     func storePassthrough(kind: String, lines: [String]) async throws
 
     /// Re-derive host-local artifacts for the imported episodes (FTS, sentence index,
@@ -118,6 +123,7 @@ public extension PortableMemoryStore {
     func importCommunity(_ c: PortableCommunity) async throws {}
     func importCategory(_ c: PortableCategory) async throws {}
     func importPreference(_ p: PortablePreference) async throws {}
+    func importSecretRef(_ r: PortableSecretRef) async throws {}
     func storePassthrough(kind: String, lines: [String]) async throws {}
     func finalizeImport(reembedEpisodeIDs: [String], reembed: Bool) async throws -> Int { 0 }
     func sync() async throws {}
