@@ -126,7 +126,7 @@ Dependency-light (only [swift-crypto](https://github.com/apple/swift-crypto)), s
 | 🧬 **[`Schemas/`](Schemas)** | JSON Schemas — validate `manifest.json` and each record kind in **any** language, no SDK required. |
 | ✅ **[`Conformance/`](Conformance)** | The L0–L3 checklist, the deletion-propagation probe, and a sample `.mem` fixture. |
 
-**Status:** spec v1.0; this is the reference SDK. Anyone — any vendor, any language — is welcome to implement the spec and the JSON Schemas; the goal is for the standard to grow *outward* across the ecosystem.
+**Status:** spec v1.0; this is the **Swift** reference SDK. A byte-interoperable **[Python SDK](https://github.com/MacPaw/portable-memory)** shares the same format, spec, and schemas. Anyone — any vendor, any language — is welcome to implement the spec and the JSON Schemas; the goal is for the standard to grow *outward* across the ecosystem.
 
 ## FAQ
 
