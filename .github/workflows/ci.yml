@@ -29,7 +29,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        swift: ["6.0", "latest"]
+        # swift-crypto pulls swift-asn1, which currently requires the Swift 6.1
+        # toolchain to build; 6.1 is the effective minimum on Linux.
+        swift: ["6.1", "latest"]
     steps:
       - uses: actions/checkout@v4
       - name: Swift version
