@@ -1,4 +1,3 @@
-<!-- Maintainers: confirm the enforcement contact email below before publishing. -->
 # Contributor Covenant Code of Conduct
 
 ## Our Pledge
@@ -38,7 +37,7 @@ officially representing the community in public spaces.
 ## Enforcement
 
 Instances of abusive, harassing, or otherwise unacceptable behavior may be reported to
-the maintainers responsible for enforcement at **opensource@macpaw.com**. All complaints
+the maintainers responsible for enforcement at **tech-research@macpaw.com**. All complaints
 will be reviewed and investigated promptly and fairly. Community leaders are obligated to
 respect the privacy and security of the reporter of any incident.
 
