@@ -1,0 +1,24 @@
+name: Bug report
+description: Something in the SDK or a bundle doesn't behave as specified.
+labels: ["bug"]
+body:
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What did you do, what did you expect, and what happened instead?
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Reproduction
+      description: Steps, code, or a minimal `.mem` bundle that reproduces it.
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: SDK version / commit and platform (macOS / Linux + Swift version)
+    validations:
+      required: true
