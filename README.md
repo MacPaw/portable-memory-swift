@@ -2,7 +2,7 @@
 
 **An open, vendor-neutral format and protocol for carrying AI memory across apps, devices, and vendors — losslessly, locally, and verifiably governed.**
 
-AI assistants are starting to *remember* — your preferences, your projects, your history across sessions. Portable Memory is the open standard for that memory: a `.mem` bundle is a plain folder of JSONL files + a manifest + checksums that any tool can read, verify, transfer, and merge. No server, no lock-in, no proprietary blob.
+AI assistants are starting to *remember* — your preferences, your projects, your history across sessions. Portable Memory is an open, vendor-neutral format for that memory — proposed and stewarded in the open (see [GOVERNANCE](GOVERNANCE.md)): a `.mem` bundle is a plain folder of JSONL files + a manifest + checksums that any tool can read, verify, transfer, and merge. No server, no lock-in, no proprietary blob.
 
 ```text
 your-memory.mem/
@@ -25,8 +25,8 @@ This is the data-portability gap of the AI era — the same gap the web closed f
 
 | For people | For builders | For the industry |
 |---|---|---|
-| **Own your memory.** Export it, keep a local copy, move it between assistants and devices. | **Adopt, don't reinvent.** Implement one small protocol and exchange memory with any other adopter. | **No lock-in.** A neutral, local-first standard instead of N proprietary silos. |
-| **Real deletion.** A delete propagates to *every* derived copy, with verifiable proof (GDPR / EU AI Act). | **Trust & compliance for free.** Inherit verifiable deletion, an audit trail, and an Evidence Pack you can hand to a compliance team. | **An ecosystem.** Interop is the substrate for portable, composable AI memory. |
+| **Own your memory.** Export it, keep a local copy, move it between assistants and devices. | **Adopt, don't reinvent.** Implement one small protocol and exchange memory with any other adopter. | **No lock-in.** A neutral, local-first alternative to N proprietary silos. |
+| **Real deletion.** A delete propagates to *every* derived copy, with a recorded proof-of-reach you can verify (supports GDPR / EU AI Act erasure). | **Trust & compliance for free.** Inherit verifiable deletion, an audit trail, and an Evidence Pack you can hand to a compliance team. | **An ecosystem.** Interop is the substrate for portable, composable AI memory. |
 | **Inspect it.** Plain text + checksums — open it in any editor. | **Lossless on-ramp.** Foreign fields and record kinds round-trip verbatim, so adopting never costs you data. | **A conformance bar.** A badge that *means* something, gated on the hardest guarantee. |
 
 ## What makes it trustworthy
@@ -39,7 +39,7 @@ Three properties set this apart from "just another export schema":
 
 ### Design principles
 
-Vendor-neutral · local-first · lossless round-trip · **governed** (deletions propagate and are provable) · engine-agnostic (source text is authoritative) · auditable (every mutation logged).
+Vendor-neutral · local-first · lossless round-trip · **governed** (deletions propagate, carry proof-of-reach, and are verifiable when signed) · engine-agnostic (source text is authoritative) · auditable (every mutation logged).
 
 ---
 
@@ -126,7 +126,7 @@ Dependency-light (only [swift-crypto](https://github.com/apple/swift-crypto)), s
 | 🧬 **[`Schemas/`](Schemas)** | JSON Schemas — validate `manifest.json` and each record kind in **any** language, no SDK required. |
 | ✅ **[`Conformance/`](Conformance)** | The L0–L3 checklist, the deletion-propagation probe, and a sample `.mem` fixture. |
 
-**Status:** spec v1.0; this is the reference SDK. [Mnemos](https://github.com/MacPaw/mnemos) is the reference adopter. Anyone — any vendor, any language — is welcome to implement the spec and the JSON Schemas; the goal is for the standard to grow *outward* across the ecosystem.
+**Status:** spec v1.0; this is the reference SDK. Anyone — any vendor, any language — is welcome to implement the spec and the JSON Schemas; the goal is for the standard to grow *outward* across the ecosystem.
 
 ## FAQ
 
@@ -165,6 +165,10 @@ They're complementary. MCP is a *runtime* protocol for connecting models to tool
 
 **Is the format stable and versioned?**
 `format` is semver in the manifest and `capabilities[]` declares optional features. Readers preserve unknown fields and kinds, so a newer bundle never loses data in an older reader.
+
+## Contributing & governance
+
+Portable Memory is an open format **proposal**, not a finished standard — implementations in other languages, adapters, and spec feedback are exactly what it needs. See **[CONTRIBUTING](CONTRIBUTING.md)**, **[GOVERNANCE](GOVERNANCE.md)** (how it's stewarded and where it's headed), and **[SECURITY](SECURITY.md)**. For how this compares to mem0 / Letta / Zep / MCP and to GDPR data-portability efforts, see [spec §12 — Prior art](Spec/portable-memory-spec.md#12-prior-art--how-this-differs).
 
 ## License
 

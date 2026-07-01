@@ -50,6 +50,12 @@ public protocol PortableMemoryStore: Sendable {
 
     // MARK: Import writers
     func tombstonedTargetIDs() async throws -> Set<String>
+    /// Apply a portable deletion (spec §5). The package guarantees a tombstoned id is
+    /// never resurrected by a later merge; the host implements the actual removal and
+    /// MUST branch on `t.op`: `.delete` removes the target and every derived artifact;
+    /// `.redact` additionally purges the target's content text while keeping the
+    /// tombstone (and a minimal skeleton), so the deletion stays provable. The id must
+    /// also be reported by `tombstonedTargetIDs()`.
     func applyTombstone(_ t: Tombstone) async throws
     func importEpisode(_ e: PortableEpisode, ext: String?) async throws
     func importEntity(_ e: PortableEntity) async throws

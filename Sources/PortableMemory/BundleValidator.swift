@@ -13,7 +13,10 @@ public struct BundleValidator: Sendable {
         public var issues: [String]
     }
 
-    public func validate(bundle dir: URL) -> Result {
+    /// Validate a bundle. When `trustedKeys` is non-empty, a valid `manifest.sig` signed
+    /// by one of those keys is also required (authenticity); otherwise only integrity
+    /// (checksums, byte counts, no unlisted files, decodability) is checked.
+    public func validate(bundle dir: URL, trustedKeys: [PortableVerifyingKey] = []) -> Result {
         var issues: [String] = []
         let manifestURL = dir.appendingPathComponent("manifest.json")
         guard let mData = try? Data(contentsOf: manifestURL) else {
@@ -25,13 +28,27 @@ public struct BundleValidator: Sendable {
         if manifest.format.split(separator: ".").first != MemFormat.version.split(separator: ".").first {
             issues.append("major format mismatch: bundle \(manifest.format) vs reader \(MemFormat.version)")
         }
+        if !trustedKeys.isEmpty {
+            let sigURL = dir.appendingPathComponent("manifest.sig")
+            if let sigData = try? Data(contentsOf: sigURL),
+               let token = String(data: sigData, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines) {
+                if !PortableSigning.verify(token: token, for: mData, trusted: trustedKeys) {
+                    issues.append("manifest signature invalid or not signed by a trusted key")
+                }
+            } else {
+                issues.append("manifest.sig missing (signature required)")
+            }
+        }
 
         let listed = Set(manifest.files.map { $0.path })
         for f in manifest.files {
-            guard BundlePath.isSafe(f.path) else {
+            guard let fileURL = BundlePath.safeURL(f.path, in: dir) else {
                 issues.append("path escapes the bundle: \(f.path)"); continue
             }
-            guard let data = try? Data(contentsOf: dir.appendingPathComponent(f.path)) else {
+            if let size = MemLimits.fileSize(fileURL), size > MemLimits.maxFileBytes {
+                issues.append("file exceeds size limit: \(f.path)"); continue
+            }
+            guard let data = try? Data(contentsOf: fileURL) else {
                 issues.append("listed file missing: \(f.path)"); continue
             }
             if Hashing.sha256Hex(data) != f.sha256 { issues.append("checksum mismatch: \(f.path)") }

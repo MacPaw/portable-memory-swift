@@ -4,13 +4,15 @@ public enum MemImportError: Error, CustomStringConvertible {
     case manifestMissing(String)
     case checksumMismatch(String)
     case dimensionMismatch(expected: Int, got: Int)
+    case signatureInvalid(String)
 
     public var description: String {
         switch self {
         case .manifestMissing(let p): return "manifest not found at \(p)"
-        case .checksumMismatch(let f): return "checksum mismatch for \(f) — bundle is corrupt or tampered"
+        case .checksumMismatch(let f): return "checksum mismatch for \(f) — bundle is corrupt (integrity failure)"
         case .dimensionMismatch(let e, let g):
             return "embedding dimension mismatch: bundle=\(g), store=\(e)."
+        case .signatureInvalid(let m): return "bundle signature verification failed: \(m)"
         }
     }
 }
@@ -22,14 +24,22 @@ public enum MemImportError: Error, CustomStringConvertible {
 public struct BundleImporter: Sendable {
     public init() {}
 
+    /// Import a bundle. When `trustedKeys` is non-empty the bundle MUST carry a valid
+    /// `manifest.sig` signed by one of those keys (authenticity, spec §1.2); otherwise
+    /// import throws. An empty set skips signature checking (integrity via checksums
+    /// still always runs).
     public func importBundle(_ store: PortableMemoryStore, from dir: URL,
-                             reembed: Bool = true, dryRun: Bool = false) async throws -> MemImportReport {
-        // 1. Manifest + integrity.
+                             reembed: Bool = true, dryRun: Bool = false,
+                             trustedKeys: [PortableVerifyingKey] = []) async throws -> MemImportReport {
+        // 1. Manifest + authenticity + integrity.
         let manifestURL = dir.appendingPathComponent("manifest.json")
         guard let manifestData = try? Data(contentsOf: manifestURL) else {
             throw MemImportError.manifestMissing(manifestURL.path)
         }
         let manifest = try MemCodec.decoder.decode(MemManifest.self, from: manifestData)
+        if !trustedKeys.isEmpty {
+            try verifyManifestSignature(dir: dir, manifestData: manifestData, trusted: trustedKeys)
+        }
         try verifyChecksums(dir: dir, manifest: manifest)
         let info = try await store.storeInfo()
         if manifest.embeddingsIncluded, info.embeddingDim > 0, manifest.embeddingDim != info.embeddingDim {
@@ -50,44 +60,79 @@ public struct BundleImporter: Sendable {
         }
         let tombstoned = try await store.tombstonedTargetIDs()
         func bump(_ k: MemKind, _ n: Int = 1) { report.applied[k.rawValue, default: 0] += n }
+        // A tombstoned id must NEVER be resurrected by a later merge, for ANY kind — this
+        // is the L2 guarantee (spec §5): even when a (stale) bundle still ships the row,
+        // the earlier-applied tombstone wins. `gone` guards every merge-by-id call; a row
+        // is refused when its own id — or a parent it cannot exist without — is
+        // tombstoned. Guarding here (not per-kind, ad hoc) is what keeps the guarantee
+        // complete as kinds are added.
+        func gone(_ ids: String...) -> Bool {
+            guard ids.contains(where: { tombstoned.contains($0) }) else { return false }
+            report.skippedTombstoned += 1
+            return true
+        }
 
         // 3. Merge items by id, dependency order.
-        for c in try readJSONL(dir, "items/context.jsonl", PortableContext.self) { try await store.importContext(c); bump(.context) }
+        for c in try readJSONL(dir, "items/context.jsonl", PortableContext.self) {
+            if gone(c.id) { continue }; try await store.importContext(c); bump(.context)
+        }
+        // category (keyed by name) and preference (keyed by key) carry no id and are not
+        // id-targetable by a tombstone, so they merge unconditionally.
         for c in try readJSONL(dir, "items/category.jsonl", PortableCategory.self) { try await store.importCategory(c); bump(.category) }
         for p in try readJSONL(dir, "items/preference.jsonl", PortablePreference.self) { try await store.importPreference(p); bump(.preference) }
-        for c in try readJSONL(dir, "items/core.jsonl", PortableCore.self) { try await store.importCoreBlock(c); bump(.core) }
-        for e in try readJSONL(dir, "items/entity.jsonl", PortableEntity.self) { try await store.importEntity(e); bump(.entity) }
+        for c in try readJSONL(dir, "items/core.jsonl", PortableCore.self) {
+            if gone(c.id) { continue }; try await store.importCoreBlock(c); bump(.core)
+        }
+        for e in try readJSONL(dir, "items/entity.jsonl", PortableEntity.self) {
+            if gone(e.id) { continue }; try await store.importEntity(e); bump(.entity)
+        }
 
         var importedEpisodeIDs: [String] = []
         for (lineData, e) in try readEpisodes(dir, "items/episode.jsonl") {
-            if tombstoned.contains(e.id) { report.skippedTombstoned += 1; continue }
+            if gone(e.id) { continue }
             try await store.importEpisode(e, ext: Interop.extractEpisodeExt(line: lineData))
             importedEpisodeIDs.append(e.id); bump(.episode)
         }
-        for r in try readJSONL(dir, "items/resource.jsonl", PortableResource.self) { try await store.importResource(r); bump(.resource) }
-        for c in try readJSONL(dir, "items/chunk.jsonl", PortableChunk.self) { try await store.importChunk(c); bump(.chunk) }
-        for e in try readJSONL(dir, "items/edge.jsonl", PortableEdge.self) { try await store.importEdge(e); bump(.edge) }
+        for r in try readJSONL(dir, "items/resource.jsonl", PortableResource.self) {
+            if gone(r.id) { continue }; try await store.importResource(r); bump(.resource)
+        }
+        for c in try readJSONL(dir, "items/chunk.jsonl", PortableChunk.self) {
+            if gone(c.id, c.resourceID) { continue }; try await store.importChunk(c); bump(.chunk)
+        }
+        for e in try readJSONL(dir, "items/edge.jsonl", PortableEdge.self) {
+            if gone(e.id, e.srcEntityID, e.dstEntityID) { continue }; try await store.importEdge(e); bump(.edge)
+        }
         for f in try readJSONL(dir, "items/fact.jsonl", PortableFact.self) {
-            if tombstoned.contains(f.episodeID) { report.skippedTombstoned += 1; continue }
-            try await store.importFact(f); bump(.fact)
+            if gone(f.id, f.episodeID) { continue }; try await store.importFact(f); bump(.fact)
         }
-        for l in try readJSONL(dir, "items/factLink.jsonl", PortableFactLink.self) { try await store.importFactLink(l); bump(.factLink) }
+        for l in try readJSONL(dir, "items/factLink.jsonl", PortableFactLink.self) {
+            if gone(l.srcFactID, l.dstFactID) { continue }; try await store.importFactLink(l); bump(.factLink)
+        }
         for l in try readJSONL(dir, "items/episodeLink.jsonl", PortableEpisodeLink.self) {
-            if tombstoned.contains(l.srcEpisodeID) || tombstoned.contains(l.dstEpisodeID) { continue }
-            try await store.importEpisodeLink(l); bump(.episodeLink)
+            if gone(l.srcEpisodeID, l.dstEpisodeID) { continue }; try await store.importEpisodeLink(l); bump(.episodeLink)
         }
-        for p in try readJSONL(dir, "items/procedure.jsonl", PortableProcedure.self) { try await store.importProcedure(p); bump(.procedure) }
-        for c in try readJSONL(dir, "items/community.jsonl", PortableCommunity.self) { try await store.importCommunity(c); bump(.community) }
+        for p in try readJSONL(dir, "items/procedure.jsonl", PortableProcedure.self) {
+            if gone(p.id) { continue }; try await store.importProcedure(p); bump(.procedure)
+        }
+        for c in try readJSONL(dir, "items/community.jsonl", PortableCommunity.self) {
+            if gone(c.id) { continue }; try await store.importCommunity(c); bump(.community)
+        }
         let refs = try readJSONL(dir, "items/secretRef.jsonl", PortableSecretRef.self)
-        for r in refs { try await store.importSecretRef(r); bump(.secretRef) }
-        if !refs.isEmpty {
+        var restoredRefs = 0
+        for r in refs {
+            if gone(r.id) { continue }
+            try await store.importSecretRef(r); bump(.secretRef); restoredRefs += 1
+        }
+        if restoredRefs > 0 {
             report.warnings.append(
-                "\(refs.count) secret reference(s): metadata skeleton restored, but the encrypted " +
+                "\(restoredRefs) secret reference(s): metadata skeleton restored, but the encrypted " +
                 "VALUE is not in the bundle — transfer it via an authorized encrypted channel (spec §7).")
         }
 
         // 4. Unknown-kind passthrough — store foreign kinds verbatim (§10). Already
-        //    integrity-checked (listed in the manifest).
+        //    integrity-checked (listed in the manifest). Foreign records are opaque to
+        //    this engine, so a tombstone targeting one cannot be enforced here; a store
+        //    that natively models the kind is responsible for honoring it.
         let knownFiles = Set(MemKind.allCases.map { "\($0.rawValue).jsonl" })
         let itemsDir = dir.appendingPathComponent("items")
         if let entries = try? FileManager.default.contentsOfDirectory(at: itemsDir, includingPropertiesForKeys: nil) {
@@ -108,14 +153,28 @@ public struct BundleImporter: Sendable {
 
     // MARK: - Internals
 
+    private func verifyManifestSignature(dir: URL, manifestData: Data, trusted: [PortableVerifyingKey]) throws {
+        let sigURL = dir.appendingPathComponent("manifest.sig")
+        guard let sigData = try? Data(contentsOf: sigURL),
+              let token = String(data: sigData, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines)
+        else { throw MemImportError.signatureInvalid("manifest.sig missing") }
+        guard PortableSigning.verify(token: token, for: manifestData, trusted: trusted) else {
+            throw MemImportError.signatureInvalid("manifest.sig invalid or not signed by a trusted key")
+        }
+    }
+
     private func verifyChecksums(dir: URL, manifest: MemManifest) throws {
         let listed = Set(manifest.files.map { $0.path })
         for f in manifest.files {
-            // A crafted manifest must not be able to escape the bundle directory.
-            guard BundlePath.isSafe(f.path) else {
+            // A crafted manifest must not escape the bundle — via absolute/.. paths OR a
+            // planted symlink whose target lies outside the bundle.
+            guard let fileURL = BundlePath.safeURL(f.path, in: dir) else {
                 throw MemImportError.checksumMismatch("\(f.path) (path escapes the bundle)")
             }
-            guard let data = try? Data(contentsOf: dir.appendingPathComponent(f.path)) else {
+            if let size = MemLimits.fileSize(fileURL), size > MemLimits.maxFileBytes {
+                throw MemImportError.checksumMismatch("\(f.path) (exceeds \(MemLimits.maxFileBytes)-byte limit)")
+            }
+            guard let data = try? Data(contentsOf: fileURL) else {
                 throw MemImportError.checksumMismatch("\(f.path) (missing)")
             }
             if Hashing.sha256Hex(data) != f.sha256 { throw MemImportError.checksumMismatch(f.path) }

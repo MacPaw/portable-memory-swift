@@ -1,15 +1,18 @@
 import Foundation
 
 /// Writes a `.mem` bundle from any `PortableMemoryStore` (spec §1, §4). Streams are
-/// deterministic (rows ordered by the host, fields sorted), every file is checksummed,
-/// and embeddings are not inlined (source text is the portable truth; the receiver
-/// re-embeds). Full or `--since` incremental.
+/// deterministic — episodes ordered by id, all other kinds ordered by their canonical
+/// line bytes, fields sorted — so a bundle is byte-reproducible regardless of the order
+/// the host returns rows in. Every file is checksummed, and embeddings are not inlined
+/// (source text is the portable truth; the receiver re-embeds). Full or `--since`
+/// incremental.
 public struct BundleExporter: Sendable {
     public init() {}
 
     public func export(_ store: PortableMemoryStore, to dir: URL,
                        mode: ExportMode = .full, since: Date? = nil,
-                       level: ConformanceLevel = .L2) async throws -> MemManifest {
+                       level: ConformanceLevel = .L2,
+                       signingKey: PortableSigningKey? = nil) async throws -> MemManifest {
         let fm = FileManager.default
         // Clear any prior bundle contents first, so stale items/audit/embeddings files
         // can't linger and later fail "present but not listed" verification (or be
@@ -89,18 +92,20 @@ public struct BundleExporter: Sendable {
         }
 
         try writeChecksums(files, in: dir)
+        var capabilities = ["bitemporal", "tombstones", "redaction", "evidence-pack", "ext", "passthrough"]
+        if signingKey != nil { capabilities.append("signed") }
         let manifest = makeManifest(
             info: info, level: level, mode: mode, since: cutoff,
-            counts: counts, files: files,
-            capabilities: ["bitemporal", "tombstones", "redaction", "evidence-pack", "ext", "passthrough"])
-        try MemCodec.encoder.encode(manifest).write(to: dir.appendingPathComponent("manifest.json"))
+            counts: counts, files: files, capabilities: capabilities)
+        try writeManifest(manifest, in: dir, signingKey: signingKey)
         return manifest
     }
 
     /// The Memory Evidence Pack (spec §6): audit + tombstones (proof-of-deletion) +
     /// provenance (edge → evidence episodes). Procurement-grade; conformance L3.
     public func exportEvidencePack(_ store: PortableMemoryStore, to dir: URL,
-                                   since: Date? = nil) async throws -> MemManifest {
+                                   since: Date? = nil,
+                                   signingKey: PortableSigningKey? = nil) async throws -> MemManifest {
         let fm = FileManager.default
         Self.clearBundle(at: dir)
         try fm.createDirectory(at: dir.appendingPathComponent("audit"), withIntermediateDirectories: true)
@@ -112,11 +117,12 @@ public struct BundleExporter: Sendable {
         counts["tombstone"] = try writeJSONL(await store.exportTombstones(since: since), "audit/tombstones.jsonl", dir, &files)
         counts["provenanceEdge"] = try writeJSONL(await store.exportEdges(), "provenance/edges.jsonl", dir, &files)
         try writeChecksums(files, in: dir)
+        var capabilities = ["evidence-pack", "proof-of-deletion", "audit", "provenance"]
+        if signingKey != nil { capabilities.append("signed") }
         let manifest = makeManifest(
             info: info, level: .L3, mode: since == nil ? .full : .incremental, since: since,
-            counts: counts, files: files,
-            capabilities: ["evidence-pack", "proof-of-deletion", "audit", "provenance"])
-        try MemCodec.encoder.encode(manifest).write(to: dir.appendingPathComponent("manifest.json"))
+            counts: counts, files: files, capabilities: capabilities)
+        try writeManifest(manifest, in: dir, signingKey: signingKey)
         return manifest
     }
 
@@ -127,8 +133,20 @@ public struct BundleExporter: Sendable {
     /// never leaves stale, unlisted files behind. Unrelated files are left alone.
     static func clearBundle(at dir: URL) {
         let fm = FileManager.default
-        for sub in ["items", "audit", "embeddings", "provenance", "manifest.json", "CHECKSUMS"] {
+        for sub in ["items", "audit", "embeddings", "provenance", "manifest.json", "manifest.sig", "CHECKSUMS"] {
             try? fm.removeItem(at: dir.appendingPathComponent(sub))
+        }
+    }
+
+    /// Write `manifest.json` and, when a signing key is supplied, a detached
+    /// `manifest.sig` (spec §1.2) over the exact manifest bytes — which transitively
+    /// authenticate every file via its `sha256`.
+    private func writeManifest(_ manifest: MemManifest, in dir: URL, signingKey: PortableSigningKey?) throws {
+        let data = try MemCodec.encoder.encode(manifest)
+        try data.write(to: dir.appendingPathComponent("manifest.json"))
+        if let signingKey {
+            let token = try PortableSigning.detachedToken(for: data, key: signingKey)
+            try Data((token + "\n").utf8).write(to: dir.appendingPathComponent("manifest.sig"))
         }
     }
 
@@ -166,7 +184,10 @@ public struct BundleExporter: Sendable {
     private func writeJSONL<T: Encodable>(_ rows: [T], _ relPath: String,
                                           _ dir: URL, _ files: inout [MemFileEntry]) throws -> Int {
         guard !rows.isEmpty else { return 0 }
-        let lines = try rows.map { try MemCodec.line($0) }
+        // Sort by canonical line bytes so the stream is deterministic even when the host
+        // returns rows in an arbitrary order (and for the id-less kinds like factLink /
+        // preference that have no natural id to sort on).
+        let lines = try rows.map { try MemCodec.line($0) }.sorted()
         let data = Data((lines.joined(separator: "\n") + "\n").utf8)
         try data.write(to: dir.appendingPathComponent(relPath))
         files.append(MemFileEntry(path: relPath, sha256: Hashing.sha256Hex(data), bytes: data.count))

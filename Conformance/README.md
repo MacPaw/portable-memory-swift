@@ -22,8 +22,10 @@ The validator checks: the manifest parses, every listed file matches its `sha256
 byte count, no unlisted/injected files are present, and every known-kind stream
 decodes. Unknown (vendor) kinds are intentionally opaque and pass through.
 
-Language-neutral validation: the `Schemas/` JSON Schemas validate `manifest.json` and
-each `items/<kind>.jsonl` record in any language.
+Language-neutral validation: the `Schemas/` JSON Schemas cover `manifest.json`, every
+`items/<kind>.jsonl` record kind, and the `audit/` records (`tombstone`, `log`), so a
+non-Swift implementer can validate a bundle without the SDK. Unknown (vendor) kinds have
+no schema by design — they are opaque passthrough.
 
 ## The deletion-propagation probe (L2 — the gate)
 
@@ -41,8 +43,12 @@ A conformant `delete` reaches every artifact derived from the content; a conform
 `import` applies tombstones **before** additions, so a bundle that still carries the
 stale rows can never resurrect deleted content.
 
-The reference adopter ([Mnemos](https://github.com/MacPaw/mnemos)) implements this as
-`memctl eval propagation` across its real retrieval routes.
+The reference SDK demonstrates the offline, bundle-level part of this probe in
+`Tests/PortableMemoryTests` — `testTombstoneFirstNoResurrection` and
+`testTombstoneNonEpisodeKindsNotResurrected`: tombstones are applied before additions,
+so a stale bundle re-import can never resurrect a deleted item of **any** kind. The
+live, all-routes assertion (dense / lexical / graph / cache / replica) is completed by
+an adopter against its own retrieval stack.
 
 ## Fixtures
 

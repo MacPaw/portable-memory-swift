@@ -124,14 +124,46 @@ public enum BundlePath {
         for c in components where c == ".." || c == "." { return false }
         return true
     }
+
+    /// Resolve `relativePath` against the bundle `root`, returning the URL only if it is
+    /// string-safe AND does not, after **symlink resolution**, escape the bundle. A
+    /// string-only check (`isSafe`) is not enough: a crafted bundle can place a symlink at
+    /// a string-safe path whose target is `/etc/passwd` or `../outside`. Returns nil if
+    /// the entry is itself a symlink or resolves outside the root.
+    public static func safeURL(_ relativePath: String, in root: URL) -> URL? {
+        guard isSafe(relativePath) else { return nil }
+        let url = root.appendingPathComponent(relativePath)
+        // Reject a symlinked entry outright (defense in depth).
+        if (try? url.resourceValues(forKeys: [.isSymbolicLinkKey]))?.isSymbolicLink == true { return nil }
+        let rootPath = root.resolvingSymlinksInPath().standardizedFileURL.path
+        let resolved = url.resolvingSymlinksInPath().standardizedFileURL.path
+        guard resolved == rootPath || resolved.hasPrefix(rootPath + "/") else { return nil }
+        return url
+    }
 }
 
 // MARK: - Deterministic canonical codec
 
+/// Lenient RFC 3339 / ISO-8601 parsing. Canonical OUTPUT is whole-second UTC `Z`
+/// (spec §1.1), but a reader accepts fractional seconds and numeric offsets too, so a
+/// foreign bundle that emits `…20.123Z` or `…+02:00` still imports (and is re-emitted in
+/// canonical form on the next export).
+enum MemDate {
+    // ISO8601DateFormatter is a non-Sendable class but is safe for concurrent parsing;
+    // shared read-only instances avoid per-record allocation.
+    nonisolated(unsafe) private static let whole: ISO8601DateFormatter = {
+        let f = ISO8601DateFormatter(); f.formatOptions = [.withInternetDateTime]; return f
+    }()
+    nonisolated(unsafe) private static let fractional: ISO8601DateFormatter = {
+        let f = ISO8601DateFormatter(); f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]; return f
+    }()
+    static func parse(_ s: String) -> Date? { whole.date(from: s) ?? fractional.date(from: s) }
+}
+
 /// The single JSON configuration used for every portable record, so serialization is
 /// byte-deterministic (diffable bundles) and `content_hash` is computed over the
-/// identical bytes a reader sees. `.sortedKeys` fixes field order; `.iso8601` is the
-/// timestamp wire format throughout.
+/// identical bytes a reader sees. `.sortedKeys` fixes field order; timestamps are emitted
+/// as whole-second UTC ISO-8601 and parsed leniently on the way in.
 public enum MemCodec {
     public static let encoder: JSONEncoder = {
         let e = JSONEncoder()
@@ -142,12 +174,36 @@ public enum MemCodec {
 
     public static let decoder: JSONDecoder = {
         let d = JSONDecoder()
-        d.dateDecodingStrategy = .iso8601
+        d.dateDecodingStrategy = .custom { decoder in
+            let s = try decoder.singleValueContainer().decode(String.self)
+            guard let date = MemDate.parse(s) else {
+                throw DecodingError.dataCorruptedError(
+                    in: try decoder.singleValueContainer(),
+                    debugDescription: "not a valid RFC 3339 timestamp: \(s)")
+            }
+            return date
+        }
         return d
     }()
 
     /// Encode one record to a single canonical JSON line (no trailing newline).
     public static func line<T: Encodable>(_ value: T) throws -> String {
         String(decoding: try encoder.encode(value), as: UTF8.self)
+    }
+}
+
+// MARK: - Resource limits (untrusted-input safety)
+
+/// Bounds for reading untrusted bundles. A `.mem` may come from anywhere; the reference
+/// reader loads files into memory, so a size cap prevents a hostile or accidental
+/// multi-gigabyte file from exhausting memory. Adopters exposing an import endpoint to
+/// untrusted input should keep or lower this.
+public enum MemLimits {
+    /// Maximum bytes for any single bundle file (default 256 MiB). Tunable by adopters.
+    nonisolated(unsafe) public static var maxFileBytes = 256 * 1024 * 1024
+
+    /// The file's size in bytes, or nil if it can't be determined.
+    static func fileSize(_ url: URL) -> Int? {
+        (try? url.resourceValues(forKeys: [.fileSizeKey]))?.fileSize
     }
 }
