@@ -23,7 +23,10 @@ reference SDK.
 - **Ed25519 signing (L3)** — detached bundle signatures (`manifest.sig`) and tombstone
   signatures, verified against caller-supplied trusted keys.
 - **Cross-vendor losslessness** — foreign episode fields via `ext` and foreign kinds via
-  verbatim passthrough; `Mem0Adapter` for mem0 exports.
+  verbatim passthrough; `Mem0Adapter` for mem0 exports, `OpenAIAdapter` for the
+  ChatGPT data export (`conversations.json` + a saved-memories fallback), and
+  `ClaudeAdapter` for Claude memory files (`MEMORY.md` + topic files with
+  frontmatter).
 - **JSON Schemas** for every record kind, the manifest, tombstones, and the audit log.
 - **Conformance kit** — L0–L3 checklist, deletion-propagation probe, and a sample `.mem`
   fixture (validated in CI).

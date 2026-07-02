@@ -72,10 +72,14 @@ let report   = try await BundleImporter().importBundle(MyStore(), from: bundleUR
 let result   = BundleValidator().validate(bundle: bundleURL)                        // L0 check
 ```
 
-Ingest another vendor's export with an adapter (mem0 ships in the box):
+Ingest another vendor's export with an adapter (mem0, ChatGPT, and Claude ship in the box):
 
 ```swift
-let episodes = try Mem0Adapter.parseEpisodes(Data(contentsOf: mem0ExportURL))   // → [PortableEpisode]
+var episodes = try Mem0Adapter.parseEpisodes(Data(contentsOf: mem0ExportURL))       // mem0
+episodes += try OpenAIAdapter.parseEpisodes(Data(contentsOf: conversationsURL))     // ChatGPT data export
+episodes += ClaudeAdapter.parseEpisodes(files: [                                    // Claude memory files
+    (path: "memory/MEMORY.md", content: memoryIndexText),
+])
 ```
 
 ## Deletion propagation — the trust core
