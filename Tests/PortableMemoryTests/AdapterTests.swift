@@ -120,4 +120,78 @@ final class AdapterTests: XCTestCase {
         XCTAssertEqual(eps[0].categories, [])
         XCTAssertEqual(eps[0].id, "notes")
     }
+
+    // MARK: - mem0 (doc-shaped verification — mirrors test_adapter_mem0_verification.py)
+
+    /// Fixture fields come from mem0's docs/source: the platform's paginated envelope,
+    /// OSS `isoformat()` timestamps (microseconds + offset), the promoted per-memory
+    /// keys (incl. `attributed_to` and date-only `expiration_date`), and extra
+    /// top-level fields that must survive via the lossless sweep. Metadata string
+    /// literals are asserted exactly — the Python suite asserts the same bytes.
+    func testMem0DocShapedExport() throws {
+        let json = """
+        {
+          "count": 2, "next": null, "previous": null,
+          "results": [
+            {
+              "id": "f4cbdb08-7062-4f3e-8eb2-9f5c80dfe64c",
+              "memory": "Alex is planning a trip to San Francisco",
+              "created_at": "2024-01-15T10:30:45.123456+00:00",
+              "updated_at": "2024-07-01T12:00:00Z",
+              "user_id": "alex",
+              "attributed_to": "alex",
+              "expiration_date": "2024-08-01",
+              "immutable": true,
+              "score": 0.42,
+              "memory_type": "procedural_memory",
+              "metadata": {"nested": {"score": 0.7}},
+              "categories": ["travel"]
+            },
+            {
+              "id": "0e5b8f0f-95a7-4c8a-9f6e-1b2c3d4e5f60",
+              "memory": "Prefers window seats",
+              "created_at": "2024-07-01T12:00:00Z",
+              "expiration_date": null
+            }
+          ]
+        }
+        """
+        let eps = try Mem0Adapter.parseEpisodes(Data(json.utf8))
+        XCTAssertEqual(eps.count, 2)
+        let e = eps[0]
+
+        // OSS microsecond+offset timestamp parses to the exact instant.
+        XCTAssertEqual(e.eventTime.timeIntervalSince1970, 1_705_314_645.123456, accuracy: 0.001)
+        XCTAssertEqual(e.mentionTime, Date(timeIntervalSince1970: 1_719_835_200))
+
+        // Promoted keys: expiration_date maps to the episode field (midnight UTC)...
+        XCTAssertEqual(e.expirationDate, Date(timeIntervalSince1970: 1_722_470_400))
+        // ...and the raw strings are preserved as provenance.
+        XCTAssertEqual(e.metadata["mem0_expiration_date"], "2024-08-01")
+        XCTAssertEqual(e.metadata["mem0_attributed_to"], "alex")
+
+        // Lossless sweep of unrecognized top-level keys (exact literals == Python's).
+        XCTAssertEqual(e.metadata["mem0_immutable"], "1")
+        XCTAssertEqual(e.metadata["mem0_score"], "0.42")
+        XCTAssertEqual(e.metadata["mem0_memory_type"], "procedural_memory")
+
+        // Container metadata values serialize canonically (byte-identical to Python —
+        // NOT JSONSerialization's "0.69999999999999996").
+        XCTAssertEqual(e.metadata["nested"], #"{"score":0.7}"#)
+
+        XCTAssertEqual(e.categories, ["travel"])
+
+        // Null expiration_date is skipped entirely.
+        XCTAssertNil(eps[1].expirationDate)
+        XCTAssertNil(eps[1].metadata["mem0_expiration_date"])
+    }
+
+    func testMem0SweepNeverOverwritesUserMetadata() throws {
+        let json = """
+        [{"id": "m1", "memory": "hi", "created_at": "2024-07-01T12:00:00Z",
+          "score": 0.9, "metadata": {"mem0_score": "user-owned"}}]
+        """
+        let eps = try Mem0Adapter.parseEpisodes(Data(json.utf8))
+        XCTAssertEqual(eps[0].metadata["mem0_score"], "user-owned")
+    }
 }
