@@ -194,4 +194,56 @@ final class AdapterTests: XCTestCase {
         let eps = try Mem0Adapter.parseEpisodes(Data(json.utf8))
         XCTAssertEqual(eps[0].metadata["mem0_score"], "user-owned")
     }
+
+    func testMem0GraphRelationsAreIgnoredGracefully() throws {
+        // With graph memory enabled, get_all()/search() return `relations` alongside
+        // `results`. v1 maps episodes only — relations must not crash or leak.
+        let json = """
+        {"results": [{"id": "m1", "memory": "hi", "created_at": "2024-07-01T12:00:00Z"}],
+         "relations": [{"source": "alex", "relationship": "lives_in", "destination": "sf"}]}
+        """
+        let eps = try Mem0Adapter.parseEpisodes(Data(json.utf8))
+        XCTAssertEqual(eps.count, 1)
+        XCTAssertEqual(eps[0].details, "hi")
+    }
+
+    // MARK: - Adapter edge cases (mirror the Python edge tests)
+
+    func testOpenAIMultimodalPartsKeepTextOnly() throws {
+        let json = """
+        {"conversation_id": "c", "mapping": {"n": {"message": {
+          "id": "m1", "author": {"role": "user"},
+          "content": {"content_type": "multimodal_text",
+                      "parts": ["look at this", {"content_type": "image_asset_pointer"}]},
+          "create_time": 1700000100.0}}}}
+        """
+        let eps = try OpenAIAdapter.parseEpisodes(Data(json.utf8))
+        XCTAssertEqual(eps.count, 1)
+        XCTAssertEqual(eps[0].details, "look at this", "non-string parts skipped, text kept")
+    }
+
+    func testOpenAIRegenerationBranchesAreAllKept() throws {
+        // A regenerated answer leaves BOTH assistant variants in the mapping tree. v1
+        // keeps every visible turn (lossless superset); current_node path-following is
+        // a possible follow-up. This pins the include-all behavior.
+        let json = """
+        {"conversation_id": "c", "current_node": "v2", "mapping": {
+          "u": {"message": {"id": "m_u", "author": {"role": "user"},
+                "content": {"parts": ["q"]}, "create_time": 1.0}},
+          "v1": {"message": {"id": "m_v1", "author": {"role": "assistant"},
+                 "content": {"parts": ["first answer"]}, "create_time": 2.0}},
+          "v2": {"message": {"id": "m_v2", "author": {"role": "assistant"},
+                 "content": {"parts": ["regenerated answer"]}, "create_time": 3.0}}}}
+        """
+        let eps = try OpenAIAdapter.parseEpisodes(Data(json.utf8))
+        XCTAssertEqual(eps.map(\.id), ["m_u", "m_v1", "m_v2"])
+    }
+
+    func testClaudeUnclosedFrontmatterFallsBackToWholeContent() {
+        let eps = ClaudeAdapter.parseEpisodes(files: [
+            ("broken.md", "---\nname: broken\nno closing fence"),
+        ])
+        XCTAssertEqual(eps.count, 1)
+        XCTAssertTrue(eps[0].details.contains("name: broken"), "nothing dropped")
+    }
 }
