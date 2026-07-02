@@ -57,8 +57,12 @@ public enum OpenAIAdapter {
 
     /// A ChatGPT epoch-seconds number → `Date`, else nil. JSON booleans are excluded
     /// (they bridge to NSNumber too, and `true` must not become 1970-01-01T00:00:01Z).
+    /// Booleans are identified by `objCType == "c"` — a `value is Bool` check would
+    /// misfire on Darwin for the NUMBERS 0 and 1, silently dropping their timestamps
+    /// (a divergence from the Python adapter that the regeneration-branch test caught).
     private static func at(_ value: Any?) -> Date? {
-        guard let value, !(value is Bool), let n = value as? NSNumber else { return nil }
+        guard let n = value as? NSNumber else { return nil }
+        if String(cString: n.objCType) == "c" { return nil }
         return Date(timeIntervalSince1970: n.doubleValue)
     }
 
