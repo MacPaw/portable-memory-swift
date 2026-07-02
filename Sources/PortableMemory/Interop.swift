@@ -21,6 +21,7 @@ public enum JSONValue: Codable, Sendable, Equatable {
     case null
     case bool(Bool)
     case int(Int)
+    case uint(UInt64)
     case double(Double)
     case string(String)
     case array([JSONValue])
@@ -30,9 +31,14 @@ public enum JSONValue: Codable, Sendable, Equatable {
         let c = try decoder.singleValueContainer()
         if c.decodeNil() { self = .null; return }
         // Order matters: Bool before Int (so JSON `true` is a bool, not coerced), Int
-        // before Double (so `3` stays an integer, `3.0`/`0.7` become doubles).
+        // before UInt64 (so common values stay Int), UInt64 before Double so integer
+        // tokens in (Int64.max, UInt64.max] — e.g. 64-bit ids/hashes — keep exact
+        // precision instead of collapsing to a lossy Double. Integer tokens beyond
+        // UInt64.max still fall to Double; such values are not byte-stable across
+        // implementations and are out of the format's supported integer range.
         if let b = try? c.decode(Bool.self) { self = .bool(b); return }
         if let i = try? c.decode(Int.self) { self = .int(i); return }
+        if let u = try? c.decode(UInt64.self) { self = .uint(u); return }
         if let d = try? c.decode(Double.self) { self = .double(d); return }
         if let s = try? c.decode(String.self) { self = .string(s); return }
         if let a = try? c.decode([JSONValue].self) { self = .array(a); return }
@@ -47,6 +53,7 @@ public enum JSONValue: Codable, Sendable, Equatable {
         case .null: try c.encodeNil()
         case .bool(let b): try c.encode(b)
         case .int(let i): try c.encode(i)
+        case .uint(let u): try c.encode(u)
         case .double(let d): try c.encode(d)
         case .string(let s): try c.encode(s)
         case .array(let a): try c.encode(a)

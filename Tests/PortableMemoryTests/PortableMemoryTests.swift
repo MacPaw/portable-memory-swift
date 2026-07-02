@@ -328,6 +328,19 @@ final class PortableMemoryTests: XCTestCase {
         } catch { /* expected */ }
     }
 
+    /// Foreign integer tokens across the full 64-bit range must keep exact precision
+    /// through the ext path — a u64 id/hash above Int64.max must not collapse to a
+    /// lossy Double (cross-implementation parity with the Python SDK).
+    func testExtPreservesFull64BitIntegers() throws {
+        let line = Data(#"{"big":9223372036854775808,"huge":18446744073709551615,"small":7}"#.utf8)
+        let obj = try MemCodec.decoder.decode([String: JSONValue].self, from: line)
+        let out = String(decoding: try MemCodec.encoder.encode(obj), as: UTF8.self)
+        XCTAssertTrue(out.contains(#""big":9223372036854775808"#), "2^63 exact, not 9.22e18")
+        XCTAssertTrue(out.contains(#""huge":18446744073709551615"#), "UInt64.max exact")
+        XCTAssertTrue(out.contains(#""small":7"#))
+        XCTAssertFalse(out.contains("e+"), "no exponent-form mangling of integer tokens")
+    }
+
     func testForeignFieldsRoundTripViaExt() async throws {
         let a = InMemoryStore()
         await a.seedEpisode(ep("ep_e", "s"), ext: #"{"vendorScore":0.91,"vendorTag":"alpha"}"#)
