@@ -1,7 +1,7 @@
 # Portable Memory — Specification v1.0
 
 > An open, vendor-neutral format for AI memory portability — proposed and stewarded in the open by MacPaw.
-> Status: **v1.0**. Reference SDK: this repository (`PortableMemory`, Swift).
+> Status: **v1.0**. Reference SDKs: Swift (github.com/MacPaw/portable-memory-swift) and Python (github.com/MacPaw/portable-memory).
 
 **Goal.** Define an open, vendor-neutral format and protocol for carrying AI memory
 across apps, devices, and vendors — losslessly, locally, and **verifiably governed**.
@@ -13,8 +13,8 @@ deletion-propagation correctness** — the single hardest guarantee a memory lay
 This document specifies the on-disk format (`.mem` bundle), the data model, the
 export/import/merge protocol, the deletion-and-redaction propagation guarantee, the
 governance artifacts, and the conformance levels. It is written to be implementable
-by any vendor in any language; the Swift `PortableMemory` package in this repo is the
-reference implementation, and `Schemas/` carries language-neutral JSON Schemas.
+by any vendor in any language; the Swift and Python `PortableMemory` packages are the
+reference implementations, and `Schemas/` carries language-neutral JSON Schemas.
 
 ---
 
