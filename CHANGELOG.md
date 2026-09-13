@@ -6,8 +6,11 @@ independent of the on-disk **format** version (`format` in the manifest).
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-09-14
+
 ### Added
 
+- **README "Try it in 60 seconds"** with a demo GIF of the paste → validate → render flow.
 - **`TransferTextAdapter`** — parses the pasted memory-transfer text that ChatGPT, Claude,
   and Gemini exchange today (the standard export prompt's `[date saved, if available] -
   memory content` entries in a code block; tolerant of `-`/`–`/`—`/`:` separators, bullets
@@ -81,7 +84,8 @@ reference SDK.
   rejection, and a per-file size bound (`MemLimits`).
 - **CI** — `swift build` + `swift test` on macOS and Linux, plus a fixture-checksum check.
 
-[Unreleased]: https://github.com/MacPaw/portable-memory-swift/compare/0.1.2...HEAD
+[Unreleased]: https://github.com/MacPaw/portable-memory-swift/compare/0.2.0...HEAD
+[0.2.0]: https://github.com/MacPaw/portable-memory-swift/compare/0.1.2...0.2.0
 [0.1.2]: https://github.com/MacPaw/portable-memory-swift/compare/0.1.1...0.1.2
 [0.1.1]: https://github.com/MacPaw/portable-memory-swift/compare/0.1.0...0.1.1
 [0.1.0]: https://github.com/MacPaw/portable-memory-swift/releases/tag/0.1.0
