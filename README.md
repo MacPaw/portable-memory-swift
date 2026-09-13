@@ -30,6 +30,8 @@ print(TransferTextAdapter.renderText(episodes))   // paste-ready text for Claude
 
 Same text in, **byte-identical** bundle out — in Swift *and* Python ([`Conformance/fixtures/transfer/`](Conformance/fixtures/transfer) is the proof). Prefer a command line? The Python SDK ships one: `pip install portable-memory && mem paste export.txt --out my-memory.mem`.
 
+The same pattern covers the other memory shapes in the wild: `OpenAIAdapter` (the ChatGPT data export), `ClaudeAdapter` (Claude memory files), `Mem0Adapter`, and `EngramAdapter` — the [Engram Specification](https://plur.ai/spec.html) (PLUR) `engrams.yaml` / `episodes.yaml`, parsed *and* rendered back losslessly (`Conformance/fixtures/engram/`).
+
 ---
 
 ## Why this exists

@@ -17,6 +17,22 @@ independent of the on-disk **format** version (`format` in the manifest).
   episodes back into paste-ready text (`renderText`). The parsing rules mirror the Python
   SDK line-for-line; the shared fixture `Conformance/fixtures/transfer/` pins
   byte-identical output across both reference SDKs.
+- **`EngramAdapter`** — the [Engram Specification](https://plur.ai/spec.html) (PLUR) in
+  both directions: `engrams.yaml` (bare-list or wrapped `engrams:` root) and
+  `episodes.yaml` → portable episodes, with `learned_at`/`created_at` → event time,
+  activation → `lastAccessed`/`accessCount`/`importance`, `episodic.confidence` →
+  confidence, tags → categories, scope → context id, `valid_until` → expiration, and
+  **every** top-level key preserved as `engram_*` metadata; `renderYAML` restores engrams
+  exactly (or synthesizes valid ones from plain episodes). Shared fixture
+  `Conformance/fixtures/engram/` pins byte-identical parse *and* render output across both
+  SDKs.
+- **`YAMLSubset`** — a Foundation-only YAML reader (block/flow collections, block scalars
+  with chomping, quoted/plain scalars typed by the YAML 1.2 core schema, comments,
+  multi-document streams) producing `JSONValue`; degrades to strings outside the subset and
+  caps nesting depth. Mirrored line-for-line in Python.
+- **Tests:** YAML-subset, engram mapping/losslessness/render, and a seeded fuzz test
+  asserting the transfer-text, YAML and engram parsers never trap, are deterministic, and
+  round-trip.
 
 ## [0.1.2] - 2026-09-13
 
