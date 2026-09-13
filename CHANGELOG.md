@@ -6,6 +6,18 @@ independent of the on-disk **format** version (`format` in the manifest).
 
 ## [Unreleased]
 
+### Added
+
+- **`TransferTextAdapter`** — parses the pasted memory-transfer text that ChatGPT, Claude,
+  and Gemini exchange today (the standard export prompt's `[date saved, if available] -
+  memory content` entries in a code block; tolerant of `-`/`–`/`—`/`:` separators, bullets
+  and numbering, section headers, bare ISO dates, month-name dates, indented continuation
+  lines, and plain prose summaries) into **deterministic, deduplicated** episodes with the
+  date, section, and line preserved verbatim in `transfer_*` metadata — and renders any
+  episodes back into paste-ready text (`renderText`). The parsing rules mirror the Python
+  SDK line-for-line; the shared fixture `Conformance/fixtures/transfer/` pins
+  byte-identical output across both reference SDKs.
+
 ## [0.1.2] - 2026-09-13
 
 ### Added

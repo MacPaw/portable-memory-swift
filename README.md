@@ -11,6 +11,23 @@ your-memory.mem/
 
 > 📄 **Read the paper:** [*Memory Belongs to the User: Portable Memory, an Open Standard Proposal for Cross-Vendor AI Memory*](https://research.macpaw.com/publications/portable-memory) — the vision, the design, the evidence, and an open invitation to collaborate (MacPaw Research, 2026). See [Citation](#citation).
 
+## Try it in 60 seconds
+
+Your AI memory is already portable enough to *paste*: every assistant now hands you a prompt that dumps it as text (Claude's and Gemini's import pages give you the standard one — *"Format each entry as: [date saved, if available] - memory content"*). Portable Memory turns that lossy text into something you can keep, verify, merge, and delete:
+
+```swift
+import PortableMemory
+
+// The code block an assistant returned for the standard memory-export prompt:
+let text = try String(contentsOfFile: "export.txt", encoding: .utf8)
+let episodes = TransferTextAdapter.parseEpisodes(text, source: "chatgpt")
+// → deterministic, deduplicated episodes (date, section, and line preserved in metadata).
+//   Feed them to your `PortableMemoryStore` and `BundleExporter` for a verifiable .mem bundle, or
+print(TransferTextAdapter.renderText(episodes))   // paste-ready text for Claude's or Gemini's memory import
+```
+
+Same text in, **byte-identical** bundle out — in Swift *and* Python ([`Conformance/fixtures/transfer/`](Conformance/fixtures/transfer) is the proof). Prefer a command line? The Python SDK ships one: `pip install portable-memory && mem paste export.txt --out my-memory.mem`.
+
 ---
 
 ## Why this exists
