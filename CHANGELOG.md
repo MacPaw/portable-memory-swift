@@ -6,6 +6,44 @@ independent of the on-disk **format** version (`format` in the manifest).
 
 ## [Unreleased]
 
+## [0.1.2] - 2026-09-13
+
+### Added
+
+- **Paper citation** — README callout and *Citation* section (BibTeX), `CITATION.cff` for
+  GitHub's "Cite this repository", and a paper link in the spec header (the spec stays
+  byte-identical with the Python repository). Paper:
+  <https://research.macpaw.com/publications/portable-memory>.
+
+## [0.1.1] - 2026-07-03
+
+### Added
+
+- **`OpenAIAdapter`** for the ChatGPT data export (`conversations.json` + a saved-memories
+  fallback) and **`ClaudeAdapter`** for Claude memory files (`MEMORY.md` + topic files with
+  frontmatter). Whatever a source models that the format does not is preserved in
+  namespaced metadata.
+- **Conformance golden vectors** — `Conformance/vectors/canonical-json.json` pins the
+  Canonical JSON rules as `input → canonical bytes → sha256` cases (reproduced by
+  `ConformanceVectorsTests`), plus a **signed fixture** (`signed.mem`, TEST key only) for
+  cross-implementation signature verification.
+- **Coverage expansion** — all-kinds round-trip, incremental (`since`) semantics, Evidence
+  Pack, redact, and adapter edge cases (graph relations ignored, multimodal parts,
+  regeneration branches).
+
+### Fixed
+
+- **64-bit integer parity** — `ext` values above `Int64.max` keep full precision
+  (`JSONValue` gained a `UInt64` tier) instead of being widened to `Double`.
+- **`Mem0Adapter`** aligned with mem0's documented export shapes: `expiration_date` and
+  `attributed_to` are read, unrecognized keys are swept into metadata losslessly, and a
+  string-valued `categories` no longer iterates character by character.
+- **`OpenAIAdapter`** — precise JSON-boolean detection when parsing timestamps on Darwin
+  (`NSNumber` 0/1 was misread as `Bool`, dropping `create_time`).
+- Spec unified byte-for-byte across both repositories; cross-links to the Python SDK.
+
+## [0.1.0] - 2026-07-01
+
 First public release of the Portable Memory format (`format` **1.0.0**) and the Swift
 reference SDK.
 
@@ -23,10 +61,7 @@ reference SDK.
 - **Ed25519 signing (L3)** — detached bundle signatures (`manifest.sig`) and tombstone
   signatures, verified against caller-supplied trusted keys.
 - **Cross-vendor losslessness** — foreign episode fields via `ext` and foreign kinds via
-  verbatim passthrough; `Mem0Adapter` for mem0 exports, `OpenAIAdapter` for the
-  ChatGPT data export (`conversations.json` + a saved-memories fallback), and
-  `ClaudeAdapter` for Claude memory files (`MEMORY.md` + topic files with
-  frontmatter).
+  verbatim passthrough; `Mem0Adapter` for mem0 exports.
 - **JSON Schemas** for every record kind, the manifest, tombstones, and the audit log.
 - **Conformance kit** — L0–L3 checklist, deletion-propagation probe, and a sample `.mem`
   fixture (validated in CI).
@@ -34,4 +69,7 @@ reference SDK.
   rejection, and a per-file size bound (`MemLimits`).
 - **CI** — `swift build` + `swift test` on macOS and Linux, plus a fixture-checksum check.
 
-[Unreleased]: https://github.com/MacPaw/portable-memory-swift/commits/main
+[Unreleased]: https://github.com/MacPaw/portable-memory-swift/compare/0.1.2...HEAD
+[0.1.2]: https://github.com/MacPaw/portable-memory-swift/compare/0.1.1...0.1.2
+[0.1.1]: https://github.com/MacPaw/portable-memory-swift/compare/0.1.0...0.1.1
+[0.1.0]: https://github.com/MacPaw/portable-memory-swift/releases/tag/0.1.0
