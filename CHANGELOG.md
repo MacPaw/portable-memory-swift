@@ -14,6 +14,11 @@ independent of the on-disk **format** version (`format` in the manifest).
   bytes — one hash for the whole archive). The exporter emits them; the validator
   recomputes `bundleDigest` when present. 1.0 bundles remain valid — the shipped 1.0
   fixtures double as backward-compatibility tests. `MemCoverage` is a public type.
+- **`Conformance/fixtures/sample-1.1.mem`** — a format-1.1 cross-SDK fixture written by the
+  Python SDK; the suite validates it (recomputing the Python-written `bundleDigest`),
+  imports it, and re-exports byte-identical streams. Tests: evidence-pack digest,
+  incremental `scopes`, forward compatibility with unknown manifest keys, seeded
+  coverage/scopes property tests.
 
 ## [0.2.0] - 2026-09-14
 
