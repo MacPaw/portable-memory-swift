@@ -64,7 +64,8 @@ public struct BundleExporter: Sendable {
         counts[MemKind.episodeLink.rawValue] = try writeJSONL(await store.exportEpisodeLinks(), "items/episodeLink.jsonl", dir, &files)
         counts[MemKind.core.rawValue] = try writeJSONL(await store.exportCoreBlocks(), "items/core.jsonl", dir, &files)
         counts[MemKind.procedure.rawValue] = try writeJSONL(await store.exportProcedures(), "items/procedure.jsonl", dir, &files)
-        counts[MemKind.context.rawValue] = try writeJSONL(await store.exportContexts(), "items/context.jsonl", dir, &files)
+        let contexts = try await store.exportContexts()
+        counts[MemKind.context.rawValue] = try writeJSONL(contexts, "items/context.jsonl", dir, &files)
         counts[MemKind.community.rawValue] = try writeJSONL(await store.exportCommunities(), "items/community.jsonl", dir, &files)
         counts[MemKind.category.rawValue] = try writeJSONL(await store.exportCategories(), "items/category.jsonl", dir, &files)
         counts[MemKind.preference.rawValue] = try writeJSONL(await store.exportPreferences(), "items/preference.jsonl", dir, &files)
@@ -91,12 +92,14 @@ public struct BundleExporter: Sendable {
             counts["audit"] = try writeJSONL(audit, "audit/log.jsonl", dir, &files)
         }
 
-        try writeChecksums(files, in: dir)
+        let checksums = try writeChecksums(files, in: dir)
         var capabilities = ["bitemporal", "tombstones", "redaction", "evidence-pack", "ext", "passthrough"]
         if signingKey != nil { capabilities.append("signed") }
         let manifest = makeManifest(
             info: info, level: level, mode: mode, since: cutoff,
-            counts: counts, files: files, capabilities: capabilities)
+            counts: counts, files: files, capabilities: capabilities,
+            coverage: Self.coverage(of: episodes), scopes: Self.scopes(of: episodes, contexts: contexts),
+            bundleDigest: Hashing.sha256Hex(checksums))
         try writeManifest(manifest, in: dir, signingKey: signingKey)
         return manifest
     }
@@ -116,12 +119,13 @@ public struct BundleExporter: Sendable {
         counts["audit"] = try writeJSONL(await store.exportAuditLog(since: since), "audit/log.jsonl", dir, &files)
         counts["tombstone"] = try writeJSONL(await store.exportTombstones(since: since), "audit/tombstones.jsonl", dir, &files)
         counts["provenanceEdge"] = try writeJSONL(await store.exportEdges(), "provenance/edges.jsonl", dir, &files)
-        try writeChecksums(files, in: dir)
+        let checksums = try writeChecksums(files, in: dir)
         var capabilities = ["evidence-pack", "proof-of-deletion", "audit", "provenance"]
         if signingKey != nil { capabilities.append("signed") }
         let manifest = makeManifest(
             info: info, level: .L3, mode: since == nil ? .full : .incremental, since: since,
-            counts: counts, files: files, capabilities: capabilities)
+            counts: counts, files: files, capabilities: capabilities,
+            bundleDigest: Hashing.sha256Hex(checksums))
         try writeManifest(manifest, in: dir, signingKey: signingKey)
         return manifest
     }
@@ -152,18 +156,44 @@ public struct BundleExporter: Sendable {
 
     private func makeManifest(info: StoreInfo, level: ConformanceLevel, mode: ExportMode,
                               since: Date?, counts: [String: Int], files: [MemFileEntry],
-                              capabilities: [String]) -> MemManifest {
+                              capabilities: [String], coverage: MemCoverage? = nil,
+                              scopes: [String]? = nil, bundleDigest: String? = nil) -> MemManifest {
         MemManifest(
             format: MemFormat.version, generator: info.generator, conformanceLevel: level,
             createdAt: Date(), exportMode: mode, since: since, schemaVersion: info.schemaVersion,
             embeddingModel: info.embeddingModel, embeddingDim: info.embeddingDim,
             embeddingsIncluded: false, capabilities: capabilities,
-            counts: counts.filter { $0.value > 0 }, files: files.sorted { $0.path < $1.path })
+            counts: counts.filter { $0.value > 0 }, files: files.sorted { $0.path < $1.path },
+            specURL: MemFormat.specURL, coverage: coverage, scopes: scopes, bundleDigest: bundleDigest)
     }
 
-    private func writeChecksums(_ files: [MemFileEntry], in dir: URL) throws {
+    /// Write `CHECKSUMS` in `sha256sum` format, sorted by path, trailing newline. Returns
+    /// the exact bytes written — the manifest's `bundleDigest` hashes them (spec §3.1).
+    private func writeChecksums(_ files: [MemFileEntry], in dir: URL) throws -> Data {
         let lines = files.sorted { $0.path < $1.path }.map { "\($0.sha256)  \($0.path)" }
-        try Data((lines.joined(separator: "\n") + "\n").utf8).write(to: dir.appendingPathComponent("CHECKSUMS"))
+        let data = Data((lines.joined(separator: "\n") + "\n").utf8)
+        try data.write(to: dir.appendingPathComponent("CHECKSUMS"))
+        return data
+    }
+
+    // MARK: - Format 1.1 manifest summaries (spec §3.1)
+
+    /// Earliest and latest `eventTime` among the episodes *in this bundle*; nil when none.
+    static func coverage(of episodes: [PortableEpisode]) -> MemCoverage? {
+        guard let first = episodes.first else { return nil }
+        var lo = first.eventTime, hi = first.eventTime
+        for e in episodes { lo = min(lo, e.eventTime); hi = max(hi, e.eventTime) }
+        return MemCoverage(from: lo, to: hi)
+    }
+
+    /// Sorted (by Unicode code point, like the Python SDK), de-duplicated scope ids: every
+    /// episode `contextID` plus the id of every exported `context` record; nil when empty.
+    static func scopes(of episodes: [PortableEpisode], contexts: [PortableContext]) -> [String]? {
+        var ids = Set<String>()
+        for e in episodes { if let c = e.contextID, !c.isEmpty { ids.insert(c) } }
+        for c in contexts { ids.insert(c.id) }
+        if ids.isEmpty { return nil }
+        return ids.sorted { $0.unicodeScalars.lexicographicallyPrecedes($1.unicodeScalars) }
     }
 
     private func writeEpisodes(_ episodes: [PortableEpisode], extMap: [String: String],
