@@ -133,7 +133,7 @@ What a source doesn't model rides in via `ext` (fields) and passthrough (kinds);
 ## Install
 
 ```swift
-.package(url: "https://github.com/MacPaw/portable-memory-swift.git", from: "0.2.0")
+.package(url: "https://github.com/MacPaw/portable-memory-swift.git", from: "0.3.0")
 ```
 
 ```swift
