@@ -14,7 +14,11 @@ import Foundation
 
 public enum MemFormat {
     /// Semantic version of the on-disk format. Importers negotiate by this + capabilities.
-    public static let version = "1.0.0"
+    /// 1.1.0 added the optional manifest fields `specURL`, `coverage`, `scopes` and
+    /// `bundleDigest`; 1.0 bundles remain valid (same major).
+    public static let version = "1.1.0"
+    /// Where the specification this bundle follows lives (`manifest.specURL`).
+    public static let specURL = "https://github.com/MacPaw/portable-memory/blob/main/Spec/portable-memory-spec.md"
     /// Conventional bundle directory suffix.
     public static let bundleSuffix = "mem"
 }
@@ -74,6 +78,15 @@ public struct MemFileEntry: Codable, Sendable {
 }
 
 /// Declares everything an importer needs to negotiate capabilities and verify integrity.
+/// The time span of the memories in a bundle — the earliest and latest episode
+/// `eventTime` (format 1.1). Lets a reader answer "what period does this archive
+/// cover?" without opening a stream.
+public struct MemCoverage: Codable, Sendable, Equatable {
+    public var from: Date
+    public var to: Date
+    public init(from: Date, to: Date) { self.from = from; self.to = to }
+}
+
 public struct MemManifest: Codable, Sendable {
     public var format: String                 // MemFormat.version
     public var generator: String              // "<vendor>/<version>"
@@ -88,11 +101,22 @@ public struct MemManifest: Codable, Sendable {
     public var capabilities: [String]         // e.g. bitemporal, tombstones, redaction, embeddings:<model>
     public var counts: [String: Int]          // MemKind.rawValue (or vendor kind) → row count
     public var files: [MemFileEntry]          // integrity (excludes manifest.json + CHECKSUMS)
+    // ── Format 1.1 additions. Optional on read: a 1.0 bundle has none of them. ──
+    public var specURL: String?               // URL of the specification the bundle follows
+    public var coverage: MemCoverage?         // earliest/latest episode eventTime; nil when no episodes
+    public var scopes: [String]?              // sorted, unique context ids the records reference; nil when none
+    public var bundleDigest: String?          // sha256 of the exact CHECKSUMS bytes — one hash for the archive
 
     public init(format: String, generator: String, conformanceLevel: ConformanceLevel,
                 createdAt: Date, exportMode: ExportMode, since: Date?, schemaVersion: Int,
                 embeddingModel: String, embeddingDim: Int, embeddingsIncluded: Bool,
-                capabilities: [String], counts: [String: Int], files: [MemFileEntry]) {
+                capabilities: [String], counts: [String: Int], files: [MemFileEntry],
+                specURL: String? = nil, coverage: MemCoverage? = nil, scopes: [String]? = nil,
+                bundleDigest: String? = nil) {
+        self.specURL = specURL
+        self.coverage = coverage
+        self.scopes = scopes
+        self.bundleDigest = bundleDigest
         self.format = format
         self.generator = generator
         self.conformanceLevel = conformanceLevel

@@ -72,6 +72,19 @@ public struct BundleValidator: Sendable {
                 if !decodes(kind, d) { issues.append("malformed \(kind.rawValue) record"); break }
             }
         }
+        // ── Archive-level digest (format 1.1, spec §3.1): bundleDigest = sha256(CHECKSUMS). ──
+        if let digest = manifest.bundleDigest {
+            if let cURL = BundlePath.safeURL("CHECKSUMS", in: dir), let data = try? Data(contentsOf: cURL) {
+                if data.count > MemLimits.maxFileBytes {
+                    issues.append("CHECKSUMS exceeds size limit")
+                } else if Hashing.sha256Hex(data) != digest {
+                    issues.append("bundleDigest mismatch: CHECKSUMS does not hash to the manifest's bundleDigest")
+                }
+            } else {
+                issues.append("bundleDigest declared but CHECKSUMS is missing")
+            }
+        }
+
         return Result(manifest: manifest, issues: issues)
     }
 
