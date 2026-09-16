@@ -28,7 +28,7 @@ let episodes = TransferTextAdapter.parseEpisodes(text, source: "chatgpt")
 print(TransferTextAdapter.renderText(episodes))   // paste-ready text for Claude's or Gemini's memory import
 ```
 
-Same text in, **byte-identical** bundle out — in Swift *and* Python ([`Conformance/fixtures/transfer/`](Conformance/fixtures/transfer) is the proof). Prefer a command line? The Python SDK ships one: `pip install portable-memory && mem paste export.txt --out my-memory.mem`.
+Same text in, **byte-identical** bundle out — in Swift *and* Python ([`Conformance/fixtures/transfer/`](Conformance/fixtures/transfer) is the proof). Prefer a command line? The Python SDK ships one: `pip install portable-memory` (or `brew install macpaw/taps/portable-memory`), then `mem paste export.txt --out my-memory.mem`.
 
 ---
 

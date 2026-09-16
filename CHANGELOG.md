@@ -6,6 +6,12 @@ independent of the on-disk **format** version (`format` in the manifest).
 
 ## [Unreleased]
 
+### Added
+
+- README: the `mem` command line from the Python SDK can also be installed with Homebrew
+  (`brew install macpaw/taps/portable-memory`, from
+  [MacPaw's Homebrew tap](https://github.com/MacPaw/homebrew-taps)).
+
 ## [0.3.0] - 2026-09-14
 
 Format **1.1.0**: the manifest now says what the archive covers, in which scopes, and
