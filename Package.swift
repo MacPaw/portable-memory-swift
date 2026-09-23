@@ -16,8 +16,7 @@ let package = Package(
     targets: [
         .target(
             name: "PortableMemory",
-            dependencies: [.product(name: "Crypto", package: "swift-crypto")],
-            swiftSettings: [.swiftLanguageMode(.v6)]
+            dependencies: [.product(name: "Crypto", package: "swift-crypto")]
         ),
         .testTarget(
             name: "PortableMemoryTests",
